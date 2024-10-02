@@ -1634,6 +1634,9 @@ public partial class CustomerController : BasePublicController
         if (await _customerService.IsPasswordExpiredAsync(customer))
             ModelState.AddModelError(string.Empty, await _localizationService.GetResourceAsync("Account.ChangePassword.PasswordIsExpired"));
 
+        if (customer.MustChangePassword)
+            ModelState.AddModelError(string.Empty, await _localizationService.GetResourceAsync("Account.ChangePassword.MustBeChanged"));
+
         return View(model);
     }
 

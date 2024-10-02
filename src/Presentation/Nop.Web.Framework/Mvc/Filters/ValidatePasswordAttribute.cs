@@ -80,14 +80,14 @@ public sealed class ValidatePasswordAttribute : TypeFilterAttribute
             if (string.IsNullOrEmpty(actionName) || string.IsNullOrEmpty(controllerName))
                 return;
 
-            //don't validate on the 'Change Password' page
+            //don't validate on 'Change Password' & 'Logout' pages
             if (controllerName.Equals("Customer", StringComparison.InvariantCultureIgnoreCase) &&
-                actionName.Equals("ChangePassword", StringComparison.InvariantCultureIgnoreCase))
+                new[] { "ChangePassword", "Logout" }.Contains(actionName, StringComparer.InvariantCultureIgnoreCase))
                 return;
 
-            //check password expiration
             var customer = await _workContext.GetCurrentCustomerAsync();
-            if (!await _customerService.IsPasswordExpiredAsync(customer))
+
+            if (!await _customerService.IsPasswordExpiredAsync(customer) && !customer.MustChangePassword)
                 return;
 
             var returnUrl = _webHelper.GetRawUrl(context.HttpContext.Request);
