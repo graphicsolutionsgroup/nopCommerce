@@ -1,4 +1,5 @@
-﻿using System.Xml;
+﻿using System.Collections.Generic;
+using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using System.Xml.XPath;
@@ -12,6 +13,7 @@ using Nop.Core.Domain.Common;
 using Nop.Core.Domain.Forums;
 using Nop.Core.Domain.Media;
 using Nop.Core.Domain.Seo;
+using Nop.Core.Domain.Stores;
 using Nop.Core.Domain.Vendors;
 using Nop.Core.Events;
 using Nop.Services.Catalog;
@@ -1872,17 +1874,45 @@ public partial class CatalogModelFactory : ICatalogModelFactory
     /// A task that represents the asynchronous operation
     /// The task result contains the search box model
     /// </returns>
-    public virtual Task<SearchBoxModel> PrepareSearchBoxModelAsync()
+    public virtual async Task<SearchBoxModel> PrepareSearchBoxModelAsync()
     {
-        var model = new SearchBoxModel
-        {
-            AutoCompleteEnabled = _catalogSettings.ProductSearchAutoCompleteEnabled,
-            ShowProductImagesInSearchAutoComplete = _catalogSettings.ShowProductImagesInSearchAutoComplete,
-            SearchTermMinimumLength = _catalogSettings.ProductSearchTermMinimumLength,
-            ShowSearchBox = _catalogSettings.ProductSearchEnabled
-        };
+        var model = new SearchBoxModel();
 
-        return Task.FromResult(model);
+        if (_catalogSettings.ShowSearchBoxCategories)
+        {
+            var store = await _storeContext.GetCurrentStoreAsync();
+            var categoriesCacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopModelCacheDefaults.SearchBoxCategoryListModelKey, store);
+
+            model.AvailableCategories = await _staticCacheManager.GetAsync(categoriesCacheKey, async () =>
+            {
+                var allCategories = await _categoryService.GetAllCategoriesAsync(storeId: store.Id);
+                var result = new List<SelectListItem>
+                {
+                    //empty entry
+                    new() 
+                    {
+                        Value = "0",
+                        Text = await _localizationService.GetResourceAsync("Search.SearchBox.AllCategories")
+                    }
+                };
+
+                var workingLanguage = await _workContext.GetWorkingLanguageAsync();
+                //add top categories
+                foreach (var c in allCategories.Where(c => c.ParentCategoryId == 0).ToList())
+                {
+                    result.Add(new()
+                    {
+                        Value = c.Id.ToString(),
+                        Text = await _localizationService.GetLocalizedAsync(c, x => x.Name, workingLanguage.Id),
+                        Selected = model.SearchCategoryId == c.Id
+                    });
+                }
+
+                return result;
+            });
+        }
+
+        return model;
     }
 
     #endregion
