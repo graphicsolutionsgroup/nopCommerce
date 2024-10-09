@@ -1650,6 +1650,7 @@ public partial class OrderProcessingService : IOrderProcessingService
             else
             {
                 result = placeOrder(details).Result;
+
                 if (result.Success)
                     _staticCacheManager.SetAsync(cacheKey, true).Wait();
             }
