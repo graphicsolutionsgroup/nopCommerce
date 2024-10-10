@@ -152,17 +152,12 @@ public partial class BaseAdminModelFactory : IBaseAdminModelFactory
     /// </returns>
     protected virtual async Task<List<SelectListItem>> GetCategoryListAsync()
     {
-        var logginedAsVendor = await _workContext.GetCurrentVendorAsync() != null;
-
-        var categories = await _staticCacheManager.GetAsync(NopModelCacheDefaults.CategoriesListKey, async () =>
-        {
-            return await _categoryService.GetAllCategoriesAsync(showHidden: true);
-        });
+        var categories = await _staticCacheManager.GetAsync(NopModelCacheDefaults.CategoriesListKey, async () => await _categoryService.GetAllCategoriesAsync(showHidden: true));
 
         var result = new List<SelectListItem>();
         foreach (var category in categories)
         {
-            if (!await _categoryService.CanVendorAddProductsAsync(category.Id))
+            if (!await _categoryService.CanVendorAddProductsAsync(category, categories))
                 continue;
 
             result.Add(new SelectListItem

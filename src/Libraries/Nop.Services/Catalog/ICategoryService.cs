@@ -13,9 +13,10 @@ public partial interface ICategoryService
     /// <summary>
     /// Check the possibility of adding products to the category for the current vendor
     /// </summary>
-    /// <param name="categoryId">Category identifier</param>
+    /// <param name="category">Category</param>
+    /// <param name="allCategories">All categories</param>
     /// <returns>A task that represents the asynchronous operation</returns>
-    Task<bool> CanVendorAddProductsAsync(int categoryId);
+    Task<bool> CanVendorAddProductsAsync(Category category, IList<Category> allCategories = null);
 
     /// <summary>
     /// Clean up category references for a specified discount
