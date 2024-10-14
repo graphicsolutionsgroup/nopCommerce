@@ -179,7 +179,6 @@ public partial class CategoryService : ICategoryService
         var breadcrumb = await GetCategoryBreadCrumbAsync(category, allCategories, showHidden: true);
 
         return !breadcrumb.Any(c => c.RestrictFromVendors);
-
     }
 
     /// <summary>
