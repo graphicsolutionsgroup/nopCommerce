@@ -1616,51 +1616,48 @@ public partial class OrderProcessingService : IOrderProcessingService
         if (!_orderSettings.PlaceOrderWithLock)
             return await placeOrder(details);
 
-        PlaceOrderResult result;
-
-        var keyBuilder = new StringBuilder();
-        keyBuilder.Append(string.Join(", ", details.Cart.Select(p => p.Id).Order()));
-        keyBuilder.Append(string.Join(", ", details.AppliedDiscounts.Select(p => p.Id).Order()));
-        keyBuilder.Append(string.Join(", ", details.AppliedGiftCards.Select(p => p.GiftCard.Id).Order()));
-        keyBuilder.Append(details.AffiliateId);
-        keyBuilder.Append(details.Customer.Id);
-        keyBuilder.Append(details.InitialOrder?.Id ?? 0);
-        keyBuilder.Append(details.RedeemedRewardPointsAmount);
-
-        var resource = HashHelper.CreateHash(Encoding.UTF32.GetBytes(keyBuilder.ToString()), "SHA512");
-
-        //the named mutex helps to avoid creating the same order in different threads,
-        //and does not decrease performance significantly, because the code is blocked only for the specific cart.
-        //you should be very careful, mutexes cannot be used in with the await operation
-        //we can't use semaphore here, because it produces PlatformNotSupportedException exception on UNIX based systems
-        using var mutex = new Mutex(false, resource);
-
-        mutex.WaitOne();
+        var resource = string.Empty;
 
         try
         {
-            var cacheKey = new CacheKey($"order-{resource}");
-            var exist = _staticCacheManager.Get(cacheKey, () => false);
-
-            if (exist)
+            (var lockObj, resource) = details.GetLock();
+            lock (lockObj)
             {
-                result = new PlaceOrderResult();
-                result.Errors.Add(_localizationService.GetResourceAsync("Checkout.OrderIsPlacedError").Result);
-            }
-            else
-            {
-                result = placeOrder(details).Result;
+                var key = new CacheKey(resource)
+                {
+                    CacheTime = 1
+                };
 
-                if (result.Success)
-                    _staticCacheManager.SetAsync(cacheKey, true).Wait();
+                if (_staticCacheManager.Get(key, () => true))
+                {
+                    _staticCacheManager.SetAsync(key, false).Wait();
+                    return placeOrder(details).Result;
+                }
             }
+        }
+        catch
+        {
+            //ignore
         }
         finally
         {
-            mutex.ReleaseMutex();
+            try
+            {
+                details.DeleteLock(resource);
+            }
+            catch 
+            {
+               //ignore
+            }
         }
 
-        return result;
+        return new PlaceOrderResult
+        {
+            Errors = new List<string>
+            {
+                await _localizationService.GetResourceAsync("Checkout.OrderIsPlacedError")
+            }
+        };
     }
 
     /// <summary>
@@ -3251,6 +3248,8 @@ public partial class OrderProcessingService : IOrderProcessingService
     /// </summary>
     protected partial class PlaceOrderContainer
     {
+        private static Dictionary<string, object> _locks = new Dictionary<string, object>();
+
         public PlaceOrderContainer()
         {
             Cart = new List<ShoppingCartItem>();
@@ -3432,6 +3431,30 @@ public partial class OrderProcessingService : IOrderProcessingService
         /// Order total
         /// </summary>
         public decimal OrderTotal { get; set; }
+
+        public (object, string) GetLock()
+        {
+            var keyBuilder = new StringBuilder();
+            keyBuilder.Append(string.Join(", ", Cart.Select(p => p.Id).Order()));
+            keyBuilder.Append(string.Join(", ", AppliedDiscounts.Select(p => p.Id).Order()));
+            keyBuilder.Append(string.Join(", ", AppliedGiftCards.Select(p => p.GiftCard.Id).Order()));
+            keyBuilder.Append(AffiliateId);
+            keyBuilder.Append(Customer.Id);
+            keyBuilder.Append(InitialOrder?.Id ?? 0);
+            keyBuilder.Append(RedeemedRewardPointsAmount);
+
+            var resource = HashHelper.CreateHash(Encoding.UTF32.GetBytes(keyBuilder.ToString()), "SHA512");
+
+            if (!_locks.ContainsKey(resource))
+                _locks.Add(resource, new());
+
+            return (_locks[resource], resource);
+        }
+
+        public void DeleteLock(string resource)
+        {
+            _locks.Remove(resource);
+        }
     }
 
     #endregion
